@@ -2,6 +2,22 @@
 // require means import something from a library 
 const TelegramBot = require('node-telegram-bot-api');
 
+const express = require('express');
+
+// ========= The Server ========
+// we'll make it to replay with any simple response
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.send("Bot is running!");
+});
+
+app.listen(PORT, () => {
+    console.log("Server started on port 3000");
+});
+
+// ========= The Bot ========
 // put the token
 const token = process.env.BOT_TOKEN;
 
