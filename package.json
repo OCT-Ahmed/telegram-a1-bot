@@ -1,7 +1,13 @@
 {
   "name": "telegram-a1-bot",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "",
+  "main": "functions/index.js",
+  "scripts": {
+    "start": "node functions/index.js"
+  },
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "node-telegram-bot-api": "^0.67.0"
   }
