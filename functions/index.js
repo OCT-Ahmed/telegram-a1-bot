@@ -11,7 +11,7 @@ const bot = new TelegramBot(token, {polling: true});
 
 // Welcoming message when user sends /start
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat_created.id, "Hi, I'm A1 course bot 👋");
+    bot.sendMessage(msg.chat.id, "Hi, I'm A1 course bot 👋");
 });
 
 // sending a question when writing /quiz
