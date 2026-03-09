@@ -1,7 +1,7 @@
 // calling Telegram Library
 // require means import something from a library 
 const TelegramBot = require('node-telegram-bot-api');
-
+ 
 // put the token
 const token = process.env.BOT_TOKEN;
 
@@ -11,7 +11,7 @@ const bot = new TelegramBot(token, {polling: true});
 
 // Welcoming message when user sends /start
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat_created.id, "Hi, I'm A1 course bot 👋");
+    bot.sendMessage(msg.chat_created.id, "مرحبا بك");
 });
 
 // sending a question when writing /quiz
