@@ -30,8 +30,9 @@ bot.start((ctx) => {
       [Markup.button.callback('📝 تسجيل', 'REGISTER')],
       [Markup.button.callback('💰 إرسال دفعة', 'SEND_PAYMENT')],
       [Markup.button.callback('📞 التواصل مع المشرف', 'CONTACT_ADMIN')],
-      [Markup.button.url('🔗 رابط المجموعة', 'YOUR_GROUP_LINK')],
-      [Markup.button.url('🔗 رابط القناة', 'YOUR_CHANNEL_LINK')],
+      // IMPORTANT: Replace these with your actual group and channel links
+      [Markup.button.url('🔗 رابط المجموعة', 'https://telegram.org')], 
+      [Markup.button.url('🔗 رابط القناة', 'https://telegram.org')],
     ])
   );
 });
@@ -39,6 +40,7 @@ bot.start((ctx) => {
 // --- Bot Actions ---
 bot.action('GET_BOOK', (ctx) => {
   console.log(`Button pressed: GET_BOOK by ${ctx.from.username}`);
+  // IMPORTANT: Replace with your actual book link
   ctx.reply('هذا هو رابط الكتاب: [Your Google Drive Link]');
 });
 
@@ -59,6 +61,7 @@ bot.action('SEND_PAYMENT', (ctx) => {
 
 bot.action('CONTACT_ADMIN', (ctx) => {
   console.log(`Button pressed: CONTACT_ADMIN by ${ctx.from.username}`);
+  // IMPORTANT: Replace with your admin's username
   ctx.reply(`يمكنك التواصل مع المشرف هنا: t.me/your_admin_username`);
 });
 
