@@ -28,21 +28,30 @@ bot.start((ctx) => {
     Markup.inlineKeyboard([
       [Markup.button.callback('📝 التسجيل في الدورة', 'REGISTER')],
       [Markup.button.callback('📚 الحصول على الكتاب', 'GET_BOOK')],
-      [Markup.button.url('🔗 رابط المجموعة', 'https://t.me/+AgZ-nk1D5-84MTBk')], 
+      [Markup.button.url('🔗 رابط المجموعة', 'https://t.me/+AgZ-nk1D5-84MTBk')],
       [Markup.button.url('🔗 رابط القناة', 'https://t.me/+9znDAa3NsKNhZjlk')],
       [Markup.button.callback('💰 دفع الرسوم', 'SEND_PAYMENT')],
       [Markup.button.callback('📞 التواصل مع المشرف', 'CONTACT_ADMIN')],
-      // IMPORTANT: Replace these with your actual group and channel links
-      
     ])
   );
 });
 
 // --- Bot Actions ---
-bot.action('GET_BOOK', (ctx) => {
+bot.action('GET_BOOK', async (ctx) => {
   console.log(`Button pressed: GET_BOOK by ${ctx.from.username}`);
-  // IMPORTANT: Replace with your actual book link
-  ctx.reply('هذا هو رابط الكتاب: Headway-Beginner-Students-Book-5th-edition-2019-146p.pdf');
+  try {
+    await ctx.reply('جاري تحضير الكتاب...');
+    // Send the book as a document from a local file
+    // IMPORTANT: Make sure the PDF file is in the root of your project directory
+    await ctx.replyWithDocument({ source: 'Headway-Beginner-Students-Book-5th-edition-2019-146p.pdf' });
+
+    // You can also send the link as a separate message
+    ctx.reply('هذا هو رابط الكتاب أيضاً: Headway-Beginner-Students-Book-5th-edition-2019-146p.pdf');
+
+  } catch (error) {
+    console.error("Error sending book:", error);
+    ctx.reply('عذراً، حدث خطأ أثناء إرسال الكتاب. تأكد من وجود الملف أو تواصل مع المشرف.');
+  }
 });
 
 bot.action('REGISTER', (ctx) => {
@@ -62,7 +71,6 @@ bot.action('SEND_PAYMENT', (ctx) => {
 
 bot.action('CONTACT_ADMIN', (ctx) => {
   console.log(`Button pressed: CONTACT_ADMIN by ${ctx.from.username}`);
-  // IMPORTANT: Replace with your admin's username
   ctx.reply(`يمكنك التواصل مع المشرف هنا: t.me/@ahmed_khyr`);
 });
 
