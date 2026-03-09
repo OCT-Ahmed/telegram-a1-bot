@@ -42,7 +42,7 @@ bot.start((ctx) => {
 bot.action('GET_BOOK', (ctx) => {
   console.log(`Button pressed: GET_BOOK by ${ctx.from.username}`);
   // IMPORTANT: Replace with your actual book link
-  ctx.reply('هذا هو رابط الكتاب: [Your Google Drive Link]');
+  ctx.reply('هذا هو رابط الكتاب: Headway-Beginner-Students-Book-5th-edition-2019-146p.pdf');
 });
 
 bot.action('REGISTER', (ctx) => {
