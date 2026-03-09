@@ -5,7 +5,7 @@ import http from 'http';
 
 // --- Environment Variables ---
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const ADMIN_ID = process.env.ADMIN_ID;
+const ADMIN_ID = 7796750723;
 const PORT = process.env.PORT || 3000; // Port for Render
 
 if (!BOT_TOKEN) {
@@ -26,13 +26,14 @@ bot.start((ctx) => {
   ctx.reply(
     'مرحبًا بك في البوت! الرجاء اختيار أحد الخيارات:',
     Markup.inlineKeyboard([
+      [Markup.button.callback('📝 التسجيل في الدورة', 'REGISTER')],
       [Markup.button.callback('📚 الحصول على الكتاب', 'GET_BOOK')],
-      [Markup.button.callback('📝 تسجيل', 'REGISTER')],
-      [Markup.button.callback('💰 إرسال دفعة', 'SEND_PAYMENT')],
+      [Markup.button.url('🔗 رابط المجموعة', 'https://t.me/+AgZ-nk1D5-84MTBk')], 
+      [Markup.button.url('🔗 رابط القناة', 'https://t.me/+9znDAa3NsKNhZjlk')],
+      [Markup.button.callback('💰 دفع الرسوم', 'SEND_PAYMENT')],
       [Markup.button.callback('📞 التواصل مع المشرف', 'CONTACT_ADMIN')],
       // IMPORTANT: Replace these with your actual group and channel links
-      [Markup.button.url('🔗 رابط المجموعة', 'https://telegram.org')], 
-      [Markup.button.url('🔗 رابط القناة', 'https://telegram.org')],
+      
     ])
   );
 });
@@ -62,7 +63,7 @@ bot.action('SEND_PAYMENT', (ctx) => {
 bot.action('CONTACT_ADMIN', (ctx) => {
   console.log(`Button pressed: CONTACT_ADMIN by ${ctx.from.username}`);
   // IMPORTANT: Replace with your admin's username
-  ctx.reply(`يمكنك التواصل مع المشرف هنا: t.me/your_admin_username`);
+  ctx.reply(`يمكنك التواصل مع المشرف هنا: t.me/@ahmed_khyr`);
 });
 
 // --- Message Handlers ---
