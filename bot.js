@@ -45,9 +45,6 @@ bot.action('GET_BOOK', async (ctx) => {
     // IMPORTANT: Make sure the PDF file is in the root of your project directory
     await ctx.replyWithDocument({ source: 'Headway-Beginner-Students-Book-5th-edition-2019-146p.pdf' });
 
-    // You can also send the link as a separate message
-    ctx.reply('هذا هو رابط الكتاب أيضاً: Headway-Beginner-Students-Book-5th-edition-2019-146p.pdf');
-
   } catch (error) {
     console.error("Error sending book:", error);
     ctx.reply('عذراً، حدث خطأ أثناء إرسال الكتاب. تأكد من وجود الملف أو تواصل مع المشرف.');
