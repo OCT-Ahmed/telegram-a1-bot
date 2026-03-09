@@ -1,15 +1,12 @@
 
-// How to run:
-// 1. npm install
-// 2. node bot.js
-
 import { Telegraf, Markup } from 'telegraf';
 import { message } from 'telegraf/filters';
+import http from 'http';
 
 // --- Environment Variables ---
-// Make sure to set these in your Render environment
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const ADMIN_ID = process.env.ADMIN_ID; // Your Telegram user ID
+const ADMIN_ID = process.env.ADMIN_ID;
+const PORT = process.env.PORT || 3000; // Port for Render
 
 if (!BOT_TOKEN) {
   console.error('BOT_TOKEN is not set in environment variables.');
@@ -17,9 +14,8 @@ if (!BOT_TOKEN) {
 }
 
 // --- In-Memory Storage ---
-// In a production environment, you would use a database like PostgreSQL or Redis.
-const userRegistration = new Map(); // Stores user registration data
-const userPayments = new Map(); // Stores payment screenshots
+const userRegistration = new Map();
+const userPayments = new Map();
 
 // --- Bot Initialization ---
 const bot = new Telegraf(BOT_TOKEN);
@@ -34,48 +30,43 @@ bot.start((ctx) => {
       [Markup.button.callback('📝 تسجيل', 'REGISTER')],
       [Markup.button.callback('💰 إرسال دفعة', 'SEND_PAYMENT')],
       [Markup.button.callback('📞 التواصل مع المشرف', 'CONTACT_ADMIN')],
-      [Markup.button.url('🔗 رابط المجموعة', 'YOUR_GROUP_LINK')], // Replace with your group link
-      [Markup.button.url('🔗 رابط القناة', 'YOUR_CHANNEL_LINK')], // Replace with your channel link
+      [Markup.button.url('🔗 رابط المجموعة', 'YOUR_GROUP_LINK')],
+      [Markup.button.url('🔗 رابط القناة', 'YOUR_CHANNEL_LINK')],
     ])
   );
 });
 
-// --- "Get Book" Button ---
+// --- Bot Actions ---
 bot.action('GET_BOOK', (ctx) => {
   console.log(`Button pressed: GET_BOOK by ${ctx.from.username}`);
-  ctx.reply('هذا هو رابط الكتاب: [Your Google Drive Link]'); // Replace with your book link
+  ctx.reply('هذا هو رابط الكتاب: [Your Google Drive Link]');
 });
 
-// --- "Register" Button and Conversation ---
 bot.action('REGISTER', (ctx) => {
   console.log(`Button pressed: REGISTER by ${ctx.from.username}`);
   if (userRegistration.has(ctx.from.id)) {
     ctx.reply('أنت مسجل بالفعل.');
   } else {
-    // Start the registration process
     userRegistration.set(ctx.from.id, {});
     ctx.reply('الرجاء إدخال اسمك الكامل:');
   }
 });
 
-// --- "Send Payment" Button ---
 bot.action('SEND_PAYMENT', (ctx) => {
   console.log(`Button pressed: SEND_PAYMENT by ${ctx.from.username}`);
   ctx.reply('الرجاء تحميل لقطة شاشة للدفع.');
 });
 
-// --- "Contact Admin" Button ---
 bot.action('CONTACT_ADMIN', (ctx) => {
   console.log(`Button pressed: CONTACT_ADMIN by ${ctx.from.username}`);
-  ctx.reply(`يمكنك التواصل مع المشرف هنا: t.me/your_admin_username`); // Replace with your admin's username
+  ctx.reply(`يمكنك التواصل مع المشرف هنا: t.me/your_admin_username`);
 });
 
-// --- Handling User Messages ---
+// --- Message Handlers ---
 bot.on(message('text'), (ctx) => {
   const text = ctx.message.text;
   const userId = ctx.from.id;
 
-  // Handle registration flow
   if (userRegistration.has(userId)) {
     const userData = userRegistration.get(userId);
     if (!userData.name) {
@@ -92,14 +83,12 @@ bot.on(message('text'), (ctx) => {
   }
 });
 
-// --- Handling Payment Screenshots ---
 bot.on(message('photo'), (ctx) => {
-  const photo = ctx.message.photo[ctx.message.photo.length - 1]; // Get the highest resolution photo
+  const photo = ctx.message.photo[ctx.message.photo.length - 1];
   userPayments.set(ctx.from.id, photo.file_id);
 
   console.log(`Payment received from: ${ctx.from.username} (${ctx.from.id})`);
 
-  // Notify the admin
   if (ADMIN_ID) {
     ctx.telegram.sendPhoto(ADMIN_ID, photo.file_id, {
       caption: `دفعة جديدة من ${ctx.from.first_name} ${ctx.from.last_name || ''} (@${ctx.from.username})`,
@@ -114,6 +103,22 @@ bot.launch(() => {
   console.log('Bot is up and running!');
 });
 
+// --- Web Server for Render Health Checks ---
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot is running.');
+});
+
+server.listen(PORT, () => {
+  console.log(`Server is listening on port ${PORT}`);
+});
+
 // --- Graceful Shutdown ---
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT', () => {
+  bot.stop('SIGINT');
+  server.close();
+});
+process.once('SIGTERM', () => {
+  bot.stop('SIGTERM');
+  server.close();
+});
