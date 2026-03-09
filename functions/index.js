@@ -1,30 +1,40 @@
-// calling Telegram Library
-// require means import something from a library 
-const TelegramBot = require('node-telegram-bot-api');
- 
-// put the token
+
+const functions = require("firebase-functions");
+const express = require("express");
+const TelegramBot = require("node-telegram-bot-api");
+
 const token = process.env.BOT_TOKEN;
+const bot = new TelegramBot(token);
 
-// create a bot and tell him to lesten for messages
-// polling means checking for new messages
-const bot = new TelegramBot(token, {polling: true});
+const app = express();
 
-// Welcoming message when user sends /start
+app.use(express.json());
+
+app.post("/", (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+exports.bot = functions.https.onRequest(app);
+
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat_created.id, "مرحبا بك");
+  bot.sendMessage(msg.chat.id, "مرحبا بك");
 });
 
-// sending a question when writing /quiz
 bot.onText(/\/quiz/, (msg) => {
-    bot.sendPoll(
-        msg.chat.id,
-        `What is "أنا" in Arabic`,
-        ["You", "I", "He", "She"],
-        {
-            type: "quiz",
-            correct_option_id: 1, // The correct answer
-            explanation: "Explanation",
-            is_anonymous: false
-        }
-    );
+  bot.sendPoll(
+    msg.chat.id,
+    "What is \"أنا\" in Arabic",
+    ["You", "I", "He", "She"],
+    {
+      type: "quiz",
+      correct_option_id: 1,
+      explanation: "Explanation",
+      is_anonymous: false
+    }
+  );
 });
+
+// Set the webhook
+const webhookUrl = `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/bot`;
+bot.setWebHook(webhookUrl);
