@@ -29,10 +29,20 @@ Account Holder: Ahmed Al-Khayr
 const ADMIN_USERNAME = 'ahmed_khyr'; // Your Telegram username for contact
 
 // --- التحقق من المتغيرات الأساسية ---
-if (!BOT_TOKEN || !ADMIN_ID) {
-  console.error('BOT_TOKEN and ADMIN_ID must be set in environment variables.');
+if (!BOT_TOKEN) {
+  console.error('CRITICAL: BOT_TOKEN is not set in environment variables. The bot cannot start.');
   process.exit(1);
+} else {
+  console.log('BOT_TOKEN found.');
 }
+
+// تحذير بدلاً من إيقاف التشغيل إذا لم يتم العثور على معرّف المشرف
+if (!ADMIN_ID) {
+    console.warn('WARNING: ADMIN_ID is not set. The /getgroupid command will be public and admin features will be disabled until it is set.');
+} else {
+    console.log(`ADMIN_ID is set to: ${ADMIN_ID}`);
+}
+
 
 // =================================================================================================
 // --- التخزين المؤقت (In-Memory Storage) ---
@@ -87,21 +97,41 @@ bot.command('contact', (ctx) => handleContactAdmin(ctx));
 
 // --- أمر جلب ID المجموعة (خاص بالمشرف) ---
 bot.command('getgroupid', (ctx) => {
-  if (ctx.from.id.toString() !== ADMIN_ID.toString()) {
-    return; // تجاهل الأمر من غير المشرفين
-  }
   if (ctx.chat.type === 'private') {
     return ctx.reply('يجب استخدام هذا الأمر داخل مجموعة للحصول على معرّفها.');
   }
+
+  // إذا كان المشرف محدداً، تأكد من أن المستخدم هو المشرف
+  if (ADMIN_ID && ctx.from.id.toString() !== ADMIN_ID.toString()) {
+    console.log(`Ignoring /getgroupid from non-admin user ${ctx.from.id}`);
+    return; 
+  }
+
   const groupTitle = ctx.chat.title;
   const groupId = ctx.chat.id;
-  ctx.reply(`🏢 **تفاصيل المجموعة**
+  const requesterId = ctx.from.id;
+
+  let replyMessage = `
+🏢 **تفاصيل المجموعة**
 
 **اسم المجموعة:** ${groupTitle}
-**معرّف المجموعة (ID):** \`${groupId}\`
+**معرّف المجموعة (Group ID):** \`${groupId}\`
+(استخدم هذا المعرف للمتغير \`REGISTRATION_GROUP_ID\` أو \`PAYMENT_GROUP_ID\`)`;
 
-الرجاء نسخ هذا المعرّف واستخدامه في متغيرات البيئة (Environment Variables) للمشروع.`);
+  // إذا لم يكن معرف المشرف معيناً، أضف إرشادات للمستخدم لتعيينه
+  if (!ADMIN_ID) {
+    replyMessage += `
+
+---
+🔑 **معرّف المشرف (Admin ID)**
+
+**معرّفك الشخصي هو:** \`${requesterId}\`
+(الرجاء نسخ هذا المعرف واستخدامه كقيمة للمتغير \`ADMIN_ID\` في إعدادات البيئة لديك.)`;
+  }
+  
+  ctx.replyWithMarkdown(replyMessage);
 });
+
 
 // =================================================================================================
 // --- معالجات الأزرار (Action Handlers) ---
@@ -223,7 +253,7 @@ bot.on(message('text'), async (ctx) => {
             reply_markup: { inline_keyboard: [[Markup.button.callback('✅ قبول التسجيل', `approve_reg_${userId}`)]] }
           });
         } catch (e) { console.error('Failed to send registration to group:', e); }
-      } else { console.warn('REGISTRATION_GROUP_ID is not set.'); }
+      } else { console.warn('REGISTRATION_GROUP_ID is not set. Skipping group notification.'); }
       break;
   }
 });
@@ -263,7 +293,7 @@ bot.on([message('photo'), message('document')], async (ctx) => {
         ctx.reply('عذراً، حدث خطأ أثناء إرسال الإيصال للمشرف.');
     }
   } else {
-    console.warn("PAYMENT_GROUP_ID is not set.");
+    console.warn("PAYMENT_GROUP_ID is not set. Skipping group notification.");
     ctx.reply("عذراً، خدمة استقبال الدفع غير متاحة حالياً.");
   }
   userState.delete(userId);
@@ -273,11 +303,22 @@ bot.on([message('photo'), message('document')], async (ctx) => {
 // --- معالجات قرارات المشرف (Admin Decision Handlers) ---
 // =================================================================================================
 
+// --- التحقق من هوية المشرف ---
+function isAdmin(ctx) {
+    if (!ADMIN_ID) {
+        ctx.answerCbQuery('خطأ: معرّف المشرف (ADMIN_ID) غير معين في الخادم.', { show_alert: true });
+        return false;
+    }
+    if (ctx.from.id.toString() !== ADMIN_ID.toString()) {
+        ctx.answerCbQuery('خاص بالمشرف فقط.', { show_alert: true });
+        return false;
+    }
+    return true;
+}
+
 // --- قبول التسجيل ---
-bot.action(/approve_reg_(\d+)/, async (ctx) => {
-  if (ctx.from.id.toString() !== ADMIN_ID.toString()) {
-    return ctx.answerCbQuery('خاص بالمشرف فقط.', { show_alert: true });
-  }
+bot.action(/approve_reg_(\\d+)/, async (ctx) => {
+  if (!isAdmin(ctx)) return;
   const userId = ctx.match[1];
   const adminName = ctx.from.first_name;
   try {
@@ -291,10 +332,8 @@ bot.action(/approve_reg_(\d+)/, async (ctx) => {
 });
 
 // --- قبول الدفع ---
-bot.action(/approve_pay_(\d+)/, async (ctx) => {
-  if (ctx.from.id.toString() !== ADMIN_ID.toString()) {
-    return ctx.answerCbQuery('خاص بالمشرف فقط.', { show_alert: true });
-  }
+bot.action(/approve_pay_(\\d+)/, async (ctx) => {
+  if (!isAdmin(ctx)) return;
   const userId = ctx.match[1];
   const adminName = ctx.from.first_name;
   try {
@@ -308,10 +347,8 @@ bot.action(/approve_pay_(\d+)/, async (ctx) => {
 });
 
 // --- رفض الدفع ---
-bot.action(/reject_pay_(\d+)/, async (ctx) => {
-  if (ctx.from.id.toString() !== ADMIN_ID.toString()) {
-    return ctx.answerCbQuery('خاص بالمشرف فقط.', { show_alert: true });
-  }
+bot.action(/reject_pay_(\\d+)/, async (ctx) => {
+  if (!isAdmin(ctx)) return;
   const userId = ctx.match[1];
   const adminName = ctx.from.first_name;
   try {
@@ -335,7 +372,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => console.log(`Server is listening on port ${PORT}`));
 
-bot.launch(() => console.log('Bot is up and running with all new features!'));
+bot.launch(() => console.log('Bot is up and running! Bot is now ready to receive commands.'));
 
 process.once('SIGINT', () => { bot.stop('SIGINT'); server.close(); });
 process.once('SIGTERM', () => { bot.stop('SIGTERM'); server.close(); });
