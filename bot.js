@@ -46,6 +46,23 @@ const userRegistration = new Map(); // لتخزين بيانات التسجيل 
 const userState = new Map(); // لتتبع حالة المستخدم الحالية (مثلاً: ينتظر إدخال الاسم)
 
 // =================================================================================================
+// --- وظائف مساعدة (Helper Functions) ---
+// =================================================================================================
+
+/**
+ * Escapes characters for Telegram's legacy Markdown mode.
+ * @param {string} text The text to escape.
+ * @returns {string} The escaped text.
+ */
+function escapeMarkdown(text) {
+  if (text === null || typeof text === 'undefined') {
+    return '';
+  }
+  return text.toString().replace(/([_*`\[])/g, '\\$1');
+}
+
+
+// =================================================================================================
 // --- إعداد البوت (Bot Initialization) ---
 // =================================================================================================
 
@@ -64,11 +81,21 @@ bot.telegram.setMyCommands([
 // --- معالجات الأوامر والأزرار (Command and Action Handlers) ---
 // =================================================================================================
 
-// --- معالج middleware لتجاهل الأوامر في المجموعات ---
+// --- معالج middleware لتجاهل الرسائل في المجموعات ---
 bot.use((ctx, next) => {
-  if (ctx.chat.type !== 'private' && ctx.message && ctx.message.text && !ctx.message.text.startsWith('/getgroupid')) {
-    return;
+  // Allow callback queries from groups (for admin buttons)
+  if (ctx.callbackQuery && ctx.chat.type !== 'private') {
+      return next();
   }
+  // Allow /getgroupid command in groups
+  if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/getgroupid') && ctx.chat.type !== 'private') {
+      return next();
+  }
+  // Block everything else in groups
+  if (ctx.chat.type !== 'private') {
+      return;
+  }
+  // Proceed with updates in private chats
   return next();
 });
 
@@ -84,8 +111,16 @@ bot.start((ctx) => {
 
 اضغط على أحد الخيارات في الأسفل للبدء.
   `;
-  ctx.reply(welcomeMessage, { parse_mode: 'HTML' });
-  showMainMenu(ctx);
+  ctx.reply(welcomeMessage, 
+    Markup.inlineKeyboard([
+        [Markup.button.callback('📝 التسجيل في الدورة', 'REGISTER')],
+        [Markup.button.callback('📚 الحصول على الكتاب', 'GET_BOOK')],
+        [Markup.button.callback('💰 دفع الرسوم', 'SEND_PAYMENT')],
+        [Markup.button.url('🔗 رابط المجموعة', GROUP_LINK)],
+        [Markup.button.url('🔗 رابط القناة', CHANNEL_LINK)],
+        [Markup.button.url('📞 التواصل مع المشرف', `https://t.me/${ADMIN_USERNAME}`)]
+      ])
+  );
 });
 
 // --- ربط الأوامر والأزرار بالوظائف الخاصة بها ---
@@ -103,22 +138,6 @@ bot.action('SEND_PAYMENT', handlePayment);
 // --- الوظائف المنطقية (Logic Functions) ---
 // =================================================================================================
 
-// --- عرض القائمة الرئيسية بالأزرار ---
-function showMainMenu(ctx) {
-  ctx.reply(
-    'الرجاء اختيار أحد الخيارات:',
-    Markup.inlineKeyboard([
-      [Markup.button.callback('📝 التسجيل في الدورة', 'REGISTER')],
-      [Markup.button.callback('📚 الحصول على الكتاب', 'GET_BOOK')],
-      [Markup.button.callback('💰 دفع الرسوم', 'SEND_PAYMENT')],
-      [Markup.button.url('🔗 رابط المجموعة', GROUP_LINK)],
-      [Markup.button.url('🔗 رابط القناة', CHANNEL_LINK)],
-      [Markup.button.url('📞 التواصل مع المشرف', `https://t.me/${ADMIN_USERNAME}`)]
-    ])
-  );
-}
-
-// --- بدء عملية التسجيل ---
 function handleRegistration(ctx) {
   console.log(`Registration initiated by: @${ctx.from.username}`);
   userState.set(ctx.from.id, 'awaiting_name');
@@ -126,7 +145,6 @@ function handleRegistration(ctx) {
   ctx.reply('لبدء التسجيل، الرجاء إدخال اسمك الكامل:');
 }
 
-// --- الحصول على الكتاب ---
 async function handleGetBook(ctx) {
   console.log(`Book request by: @${ctx.from.username}`);
   if (ctx.callbackQuery) ctx.answerCbQuery();
@@ -139,12 +157,10 @@ async function handleGetBook(ctx) {
   }
 }
 
-// --- بدء عملية الدفع (متاحة للجميع) ---
 function handlePayment(ctx) {
   console.log(`Payment initiated by: @${ctx.from.username}`);
   if (ctx.callbackQuery) ctx.answerCbQuery();
 
-  // بناء تفاصيل الحساب البنكي ديناميكياً
   let bankDetailsParts = [];
   if (BANK_ACCOUNT_HOLDER) bankDetailsParts.push(`<b>اسم صاحب الحساب:</b> ${BANK_ACCOUNT_HOLDER}`);
   if (BANK_ACCOUNT_NUMBER) bankDetailsParts.push(`<b>رقم الحساب:</b> ${BANK_ACCOUNT_NUMBER}`);
@@ -176,7 +192,6 @@ ${bankDetailsText}
 // --- معالجات الرسائل المدخلة (Message Input Handlers) ---
 // =================================================================================================
 
-// --- معالج إدخال النصوص (للتسجيل) ---
 bot.on(message('text'), async (ctx) => {
   const userId = ctx.from.id;
   const currentState = userState.get(userId);
@@ -205,7 +220,7 @@ bot.on(message('text'), async (ctx) => {
       console.log(`New registration submitted: ${JSON.stringify(userData)}`);
 
       if (REGISTRATION_GROUP_ID) {
-        const regDetails = `🆕 **طلب تسجيل جديد**\n\n**الاسم:** ${userData.name}\n**الهاتف:** ${userData.phone}\n**الدولة:** ${userData.country}\n**المستخدم:** @${ctx.from.username || 'N/A'}\n**المعرّف:** \`${userId}\``;
+        const regDetails = `🆕 *طلب تسجيل جديد*\n\n*الاسم:* ${escapeMarkdown(userData.name)}\n*الهاتف:* ${escapeMarkdown(userData.phone)}\n*الدولة:* ${escapeMarkdown(userData.country)}\n*المستخدم:* @${escapeMarkdown(ctx.from.username) || 'N/A'}\n*المعرّف:* \`${userId}\``;
         try {
           await bot.telegram.sendMessage(REGISTRATION_GROUP_ID, regDetails, {
             parse_mode: 'Markdown',
@@ -217,13 +232,12 @@ bot.on(message('text'), async (ctx) => {
   }
 });
 
-// --- معالج إيصالات الدفع (صور ومستندات) ---
 bot.on([message('photo'), message('document')], async (ctx) => {
   const userId = ctx.from.id;
   if (userState.get(userId) !== 'awaiting_payment_receipt') return;
   
   console.log(`Payment receipt received from: @${ctx.from.username} (${userId})`);
-  userState.delete(userId); // Clear user state immediately
+  userState.delete(userId); 
   
   let userData = userRegistration.get(userId) || {
     name: `${ctx.from.first_name}${ctx.from.last_name ? ' ' + ctx.from.last_name : ''}`,
@@ -231,7 +245,7 @@ bot.on([message('photo'), message('document')], async (ctx) => {
     country: 'غير مسجل'
   };
 
-  const adminCaption = `🧾 **إيصال دفع جديد**\n\n**الاسم:** ${userData.name}\n**الهاتف:** ${userData.phone}\n**الدولة:** ${userData.country}\n**المستخدم:** @${ctx.from.username || 'N/A'}\n**المعرّف:** \`${userId}\``;
+  const adminCaption = `🧾 *إيصال دفع جديد*\n\n*الاسم:* ${escapeMarkdown(userData.name)}\n*الهاتف:* ${escapeMarkdown(userData.phone)}\n*الدولة:* ${escapeMarkdown(userData.country)}\n*المستخدم:* @${escapeMarkdown(ctx.from.username) || 'N/A'}\n*المعرّف:* \`${userId}\``;
   
   const adminReplyMarkup = { inline_keyboard: [[ Markup.button.callback('✅ قبول', `approve_pay_${userId}`), Markup.button.callback('❌ رفض', `reject_pay_${userId}`) ]] };
 
@@ -263,8 +277,8 @@ bot.command('getgroupid', (ctx) => {
   if (ADMIN_ID && ctx.from.id.toString() !== ADMIN_ID.toString()) {
     return;
   }
-  const groupInfo = `🏢 **تفاصيل المجموعة**\n**اسم المجموعة:** ${ctx.chat.title}\n**معرّف المجموعة (Group ID):** \`${ctx.chat.id}\``;
-  const adminInfo = `\n\n---\n🔑 **معرّف المشرف (Admin ID)**\n**معرّفك الشخصي هو:** \`${ctx.from.id}\``;
+  const groupInfo = `*تفاصيل المجموعة*\nاسم المجموعة: ${escapeMarkdown(ctx.chat.title)}\nمعرّف المجموعة (Group ID): \`${ctx.chat.id}\``;
+  const adminInfo = `\n\n---\n*معرّف المشرف (Admin ID)*\nمعرّفك الشخصي هو: \`${ctx.from.id}\``;
   ctx.replyWithMarkdown(groupInfo + (!ADMIN_ID ? adminInfo : ''));
 });
 
@@ -285,7 +299,7 @@ bot.action(/approve_reg_(\d+)/, async (ctx) => {
   const userId = ctx.match[1];
   try {
     await bot.telegram.sendMessage(userId, '🎉 تهانينا! تم قبول تسجيلك. يمكنك الآن المتابعة لدفع الرسوم عبر الأمر /pay أو من القائمة الرئيسية.');
-    await ctx.editMessageText(`✅ تم قبول التسجيل بواسطة ${ctx.from.first_name}.`);
+    await ctx.editMessageText(`✅ تم قبول التسجيل بواسطة ${escapeMarkdown(ctx.from.first_name)}.`);
     ctx.answerCbQuery('تم إعلام المستخدم بقبول التسجيل.');
   } catch (e) { console.error('Failed to approve registration:', e); ctx.answerCbQuery('فشل الإجراء. ربما حظر المستخدم البوت.', { show_alert: true }); }
 });
@@ -295,7 +309,7 @@ bot.action(/approve_pay_(\d+)/, async (ctx) => {
   const userId = ctx.match[1];
   try {
     await bot.telegram.sendMessage(userId, '🎉 تهانينا! تم تأكيد دفعك بنجاح. أهلاً بك في الدورة.');
-    await ctx.editMessageCaption(`✅ تم تأكيد الدفع بنجاح بواسطة ${ctx.from.first_name}.`);
+    await ctx.editMessageCaption(`✅ تم تأكيد الدفع بنجاح بواسطة ${escapeMarkdown(ctx.from.first_name)}.`);
     ctx.answerCbQuery('تم إرسال التأكيد للمستخدم بنجاح.');
   } catch (e) { console.error('Failed to approve payment:', e); ctx.answerCbQuery('فشل الإجراء. ربما حظر المستخدم البوت.', { show_alert: true }); }
 });
@@ -305,7 +319,7 @@ bot.action(/reject_pay_(\d+)/, async (ctx) => {
   const userId = ctx.match[1];
   try {
     await bot.telegram.sendMessage(userId, `عذراً، تم رفض إيصال الدفع الخاص بك. يرجى التواصل مع المشرف لمعرفة السبب: @${ADMIN_USERNAME}`);
-    await ctx.editMessageCaption(`❌ تم رفض الطلب بواسطة ${ctx.from.first_name}.`);
+    await ctx.editMessageCaption(`❌ تم رفض الطلب بواسطة ${escapeMarkdown(ctx.from.first_name)}.`);
     ctx.answerCbQuery('تم إعلام المستخدم بالرفض.');
   } catch (e) { console.error('Failed to reject payment:', e); ctx.answerCbQuery('فشل الإجراء. ربما حظر المستخدم البوت.', { show_alert: true }); }
 });
@@ -321,7 +335,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => console.log(`Server is listening on port ${PORT}`));
 
-bot.launch(() => console.log('Bot is up and running! All fixes and new features are live.'));
+bot.launch(() => console.log('Bot is up, stable, and running with all fixes.'));
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
