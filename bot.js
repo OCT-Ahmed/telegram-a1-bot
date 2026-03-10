@@ -1,1 +1,227 @@
-\nimport { Telegraf, Markup } from \'telegraf\';\nimport { message } from \'telegraf/filters\';\nimport http from \'http\';\n\n// --- Environment Variables ---\nconst BOT_TOKEN = process.env.BOT_TOKEN;\nconst ADMIN_ID = 7796750723; // Your Telegram Admin ID\nconst PORT = process.env.PORT || 3000;\n\n// --- Constants for Pricing and Bank Details ---\nconst ORIGINAL_PRICE = \'960 SAR\';\nconst DISCOUNT_PRICE = \'30 SAR\';\nconst OFFER_NAME = \'✨ عرض رمضان المميز ✨\';\nconst BANK_DETAILS = `\nBank: Al-Rajhi Bank\nAccount Number: 12345678901234\nAccount Holder: Ahmed Al-Khayr\n`;\n\nif (!BOT_TOKEN) {\n  console.error(\'BOT_TOKEN is not set in environment variables.\');\n  process.exit(1);\n}\n\n// --- In-Memory Storage ---\nconst userRegistration = new Map(); // Stores { name, phone, country }\nconst userState = new Map(); // Tracks user\'s current action, e.g., \'awaiting_payment_receipt\'\n\n// --- Bot Initialization ---\nconst bot = new Telegraf(BOT_TOKEN);\n\n// --- Welcome Message and Main Menu ---\nbot.start((ctx) => {\n  console.log(`New user started the bot: ${ctx.from.username} (${ctx.from.id})`);\n  ctx.reply(\n    \'مرحبًا بك في البوت! الرجاء اختيار أحد الخيارات:\',\n    Markup.inlineKeyboard([\n      [Markup.button.callback(\'📝 التسجيل في الدورة\', \'REGISTER\')],\n      [Markup.button.callback(\'📚 الحصول على الكتاب\', \'GET_BOOK\')],\n      [Markup.button.url(\'🔗 رابط المجموعة\', \'https://t.me/+AgZ-nk1D5-84MTBk\')],\n      [Markup.button.url(\'🔗 رابط القناة\', \'https://t.me/+9znDAa3NsKNhZjlk\')],\n      [Markup.button.callback(\'💰 دفع الرسوم\', \'SEND_PAYMENT\')],\n      [Markup.button.callback(\'📞 التواصل مع المشرف\', \'CONTACT_ADMIN\')],\n    ])\n  );\n});\n\n// --- Registration Action (Now Disabled) ---\nbot.action(\'REGISTER\', (ctx) => {\n  console.log(`Button pressed: REGISTER by ${ctx.from.username}`);\n  ctx.reply(\'التسجيل مغلق حاليًا. يرجى التواصل مع المشرف للاستفسار: t.me/ahmed_khyr\');\n});\n\n// --- Get Book Action ---\nbot.action(\'GET_BOOK\', async (ctx) => {\n    console.log(`Button pressed: GET_BOOK by ${ctx.from.username}`);\n    try {\n      await ctx.reply(\'جاري تحضير الكتاب...\');\n      await ctx.replyWithDocument({ source: \'Headway-Beginner-Students-Book-5th-edition-2019-146p.pdf\' });\n    } catch (error) {\n      console.error(\"Error sending book:\", error);\n      ctx.reply(\'عذراً، حدث خطأ أثناء إرسال الكتاب. تأكد من وجود الملف أو تواصل مع المشرف.\');\n    }\n});\n\n// --- Payment Flow Action ---\nbot.action(\'SEND_PAYMENT\', (ctx) => {\n  console.log(`Button pressed: SEND_PAYMENT by ${ctx.from.username}`);\n  const userId = ctx.from.id;\n\n  // Mock user registration data for testing\n  if (!userRegistration.has(userId)) {\n      userRegistration.set(userId, { name: \'Ahmed Khayr\', phone: \'+966500000000\', country: \'Saudi Arabia\' });\n  }\n\n  if (!userRegistration.has(userId)) {\n    ctx.reply(\'يجب عليك التسجيل أولاً. التسجيل مغلق حاليًا, يرجى التواصل مع المشرف: t.me/ahmed_khyr\');\n    return;\n  }\n\n  const paymentMessage = `\n${OFFER_NAME}\n\n🏦 **تفاصيل الدفع**\n\n**السعر الأصلي:** <s>${ORIGINAL_PRICE}</s>\n**سعر العرض:** <strong>${DISCOUNT_PRICE}</strong>\n\n**طريقة الدفع:** تحويل بنكي\n${BANK_DETAILS}\n---\nالرجاء إرسال صورة أو ملف (PDF) لإيصال الدفع للمتابعة.\n`;\n\n  ctx.replyWithHTML(paymentMessage);\n  userState.set(userId, \'awaiting_payment_receipt\');\n});\n\n// --- Contact Admin Action ---\nbot.action(\'CONTACT_ADMIN\', (ctx) => {\n  console.log(`Button pressed: CONTACT_ADMIN by ${ctx.from.username}`);\n  ctx.reply(\'يمكنك التواصل مع المشرف هنا: t.me/ahmed_khyr\');\n});\n\n// --- Photo & Document Message Handler (for Payment Receipts) ---\nbot.on([message(\'photo\'), message(\'document\')], async (ctx) => {\n  const userId = ctx.from.id;\n\n  if (userState.get(userId) !== \'awaiting_payment_receipt\') {\n    return; // Ignore unexpected files\n  }\n  \n  console.log(`Payment receipt received from: ${ctx.from.username} (${userId})\`);\n\n  const userData = userRegistration.get(userId);\n  if(!userData){\n      console.error(\'Could not find user registration data for payment receipt.\');\n      ctx.reply(\'حدث خطأ، لم أجد بيانات التسجيل الخاصة بك. الرجاء التواصل مع المشرف.\');\n      return;\n  }\n\n  const adminCaption = `\n🧾 **إيصال دفع جديد**\n\n**الاسم:** ${userData.name}\n**الدولة:** ${userData.country}\n**رقم الهاتف:** ${userData.phone}\n**معرّف المستخدم:** \\`${userId}\\`\n`;\n  \n  const adminReplyMarkup = {\n    inline_keyboard: [\n      [Markup.button.callback(\'✅ قبول وتأكيد\', `approve_${userId}`)]\n    ]\n  };\n\n  try {\n    // Forward photo or document to admin with user details\n    if (ctx.message.photo) {\n        const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;\n        await ctx.telegram.sendPhoto(ADMIN_ID, fileId, {\n            caption: adminCaption,\n            parse_mode: \'Markdown\',\n            reply_markup: adminReplyMarkup\n        });\n    } else if (ctx.message.document) {\n        const fileId = ctx.message.document.file_id;\n        await ctx.telegram.sendDocument(ADMIN_ID, fileId, {\n            caption: adminCaption,\n            parse_mode: \'Markdown\',\n            reply_markup: adminReplyMarkup\n        });\n    }\n\n    ctx.reply(\'✅ تم استلام إيصال الدفع الخاص بك، وسيتم مراجعته وتأكيده من قبل المشرف قريبًا.\');\n  \n  } catch(error) {\n      console.error(\'Error forwarding receipt to admin:\', error);\n      ctx.reply(\'عذراً، حدث خطأ أثناء إرسال الإيصال للمشرف.\');\n  } finally {\n      userState.delete(userId); // Clear user state after processing\n  }\n});\n\n// --- Admin Approval Action ---\nbot.action(/approve_(\\d+)/, async (ctx) => {\n  if (ctx.from.id.toString() !== ADMIN_ID.toString()) {\n    return ctx.answerCbQuery(\'خاص بالمشرف فقط.\');\n  }\n\n  const userIdToApprove = ctx.match[1];\n  console.log(`Admin ${ctx.from.id} approved payment for user ${userIdToApprove}`);\n\n  try {\n    // Notify the user about the approval\n    await ctx.telegram.sendMessage(userIdToApprove, \'🎉 تهانينا! تم تأكيد دفعك بنجاح. أهلاً بك في الدورة.\');\n\n    // Update the admin\'s message to show confirmation\n    await ctx.editMessageCaption(\'✅ تم تأكيد الدفع بنجاح.\');\n\n    ctx.answerCbQuery(\'تم إرسال التأكيد للمستخدم بنجاح.\');\n\n  } catch (error) {\n    console.error(\'Failed to notify user or edit message:\', error);\n    ctx.answerCbQuery(\'حدث خطأ. ربما قام المستخدم بحظر البوت.\');\n  }\n});\n\n\n// --- Text Message Handler (for registration flow, currently inactive) ---\nbot.on(message(\'text\'), (ctx) => {\n  const userId = ctx.from.id;\n  if (userRegistration.has(userId) && !userRegistration.get(userId).country) {\n      const text = ctx.message.text;\n      const userData = userRegistration.get(userId);\n      if (!userData.name) {\n        userData.name = text;\n        ctx.reply(\'شكرًا لك. الآن الرجاء إدخال رقم هاتفك.\');\n      } else if (!userData.phone) {\n        userData.phone = text;\n        ctx.reply(\'أخيرًا، الرجاء إدخال بلدك.\');\n      } else if (!userData.country) {\n        userData.country = text;\n        ctx.reply(\'اكتمل التسجيل! شكرًا لك.\');\n        console.log(`New registration: ${JSON.stringify(userData)}`);\n      }\n  }\n});\n\n// --- Start the Bot & Web Server ---\nbot.launch(() => {\n  console.log(\'Bot is up and running!\');\n});\n\nconst server = http.createServer((req, res) => {\n  res.writeHead(200, { \'Content-Type\': \'text/plain\' });\n  res.end(\'Bot server is running to keep the service alive.\');\n});\n\nserver.listen(PORT, () => {\n  console.log(`Server is listening on port ${PORT}`);\n});\n\n// --- Graceful Shutdown ---\nprocess.once(\'SIGINT\', () => { bot.stop(\'SIGINT\'); server.close(); });\nprocess.once(\'SIGTERM\', () => { bot.stop(\'SIGTERM\'); server.close(); });\n
+
+import { Telegraf, Markup } from 'telegraf';
+import { message } from 'telegraf/filters';
+import http from 'http';
+
+// --- Environment Variables ---
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_ID = 7796750723; // Your Telegram Admin ID
+const PORT = process.env.PORT || 3000;
+
+// --- Constants for Pricing and Bank Details ---
+const ORIGINAL_PRICE = '960 SAR';
+const DISCOUNT_PRICE = '30 SAR';
+const OFFER_NAME = '✨ عرض رمضان المميز ✨';
+const BANK_DETAILS = `
+Bank: Al-Rajhi Bank
+Account Number: 12345678901234
+Account Holder: Ahmed Al-Khayr
+`;
+
+if (!BOT_TOKEN) {
+  console.error('BOT_TOKEN is not set in environment variables.');
+  process.exit(1);
+}
+
+// --- In-Memory Storage ---
+const userRegistration = new Map(); // Stores { name, phone, country }
+const userState = new Map(); // Tracks user's current action, e.g., 'awaiting_payment_receipt'
+
+// --- Bot Initialization ---
+const bot = new Telegraf(BOT_TOKEN);
+
+// --- Welcome Message and Main Menu ---
+bot.start((ctx) => {
+  console.log(`New user started the bot: ${ctx.from.username} (${ctx.from.id})`);
+  ctx.reply(
+    'مرحبًا بك في البوت! الرجاء اختيار أحد الخيارات:',
+    Markup.inlineKeyboard([
+      [Markup.button.callback('📝 التسجيل في الدورة', 'REGISTER')],
+      [Markup.button.callback('📚 الحصول على الكتاب', 'GET_BOOK')],
+      [Markup.button.url('🔗 رابط المجموعة', 'https://t.me/+AgZ-nk1D5-84MTBk')],
+      [Markup.button.url('🔗 رابط القناة', 'https://t.me/+9znDAa3NsKNhZjlk')],
+      [Markup.button.callback('💰 دفع الرسوم', 'SEND_PAYMENT')],
+      [Markup.button.callback('📞 التواصل مع المشرف', 'CONTACT_ADMIN')],
+    ])
+  );
+});
+
+// --- Registration Action (Now Disabled) ---
+bot.action('REGISTER', (ctx) => {
+  console.log(`Button pressed: REGISTER by ${ctx.from.username}`);
+  ctx.reply('التسجيل مغلق حاليًا. يرجى التواصل مع المشرف للاستفسار: t.me/ahmed_khyr');
+});
+
+// --- Get Book Action ---
+bot.action('GET_BOOK', async (ctx) => {
+    console.log(`Button pressed: GET_BOOK by ${ctx.from.username}`);
+    try {
+      await ctx.reply('جاري تحضير الكتاب...');
+      await ctx.replyWithDocument({ source: 'Headway-Beginner-Students-Book-5th-edition-2019-146p.pdf' });
+    } catch (error) {
+      console.error("Error sending book:", error);
+      ctx.reply('عذراً، حدث خطأ أثناء إرسال الكتاب. تأكد من وجود الملف أو تواصل مع المشرف.');
+    }
+});
+
+// --- Payment Flow Action ---
+bot.action('SEND_PAYMENT', (ctx) => {
+  console.log(`Button pressed: SEND_PAYMENT by ${ctx.from.username}`);
+  const userId = ctx.from.id;
+
+  // Mock user registration data for testing
+  if (!userRegistration.has(userId)) {
+      userRegistration.set(userId, { name: 'Ahmed Khayr', phone: '+966500000000', country: 'Saudi Arabia' });
+  }
+
+  if (!userRegistration.has(userId)) {
+    ctx.reply('يجب عليك التسجيل أولاً. التسجيل مغلق حاليًا, يرجى التواصل مع المشرف: t.me/ahmed_khyr');
+    return;
+  }
+
+  const paymentMessage = `
+${OFFER_NAME}
+
+🏦 **تفاصيل الدفع**
+
+**السعر الأصلي:** <s>${ORIGINAL_PRICE}</s>
+**سعر العرض:** <strong>${DISCOUNT_PRICE}</strong>
+
+**طريقة الدفع:** تحويل بنكي
+${BANK_DETAILS}
+---
+الرجاء إرسال صورة أو ملف (PDF) لإيصال الدفع للمتابعة.
+`;
+
+  ctx.replyWithHTML(paymentMessage);
+  userState.set(userId, 'awaiting_payment_receipt');
+});
+
+// --- Contact Admin Action ---
+bot.action('CONTACT_ADMIN', (ctx) => {
+  console.log(`Button pressed: CONTACT_ADMIN by ${ctx.from.username}`);
+  ctx.reply('يمكنك التواصل مع المشرف هنا: t.me/ahmed_khyr');
+});
+
+// --- Photo & Document Message Handler (for Payment Receipts) ---
+bot.on([message('photo'), message('document')], async (ctx) => {
+  const userId = ctx.from.id;
+
+  if (userState.get(userId) !== 'awaiting_payment_receipt') {
+    return; // Ignore unexpected files
+  }
+  
+  console.log(`Payment receipt received from: ${ctx.from.username} (${userId})`);
+
+  const userData = userRegistration.get(userId);
+  if(!userData){
+      console.error('Could not find user registration data for payment receipt.');
+      ctx.reply('حدث خطأ، لم أجد بيانات التسجيل الخاصة بك. الرجاء التواصل مع المشرف.');
+      return;
+  }
+
+  const adminCaption = `
+🧾 **إيصال دفع جديد**
+
+**الاسم:** ${userData.name}
+**الدولة:** ${userData.country}
+**رقم الهاتف:** ${userData.phone}
+**معرّف المستخدم:** \`${userId}\`
+`;
+  
+  const adminReplyMarkup = {
+    inline_keyboard: [
+      [Markup.button.callback('✅ قبول وتأكيد', `approve_${userId}`)]
+    ]
+  };
+
+  try {
+    // Forward photo or document to admin with user details
+    if (ctx.message.photo) {
+        const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+        await ctx.telegram.sendPhoto(ADMIN_ID, fileId, {
+            caption: adminCaption,
+            parse_mode: 'Markdown',
+            reply_markup: adminReplyMarkup
+        });
+    } else if (ctx.message.document) {
+        const fileId = ctx.message.document.file_id;
+        await ctx.telegram.sendDocument(ADMIN_ID, fileId, {
+            caption: adminCaption,
+            parse_mode: 'Markdown',
+            reply_markup: adminReplyMarkup
+        });
+    }
+
+    ctx.reply('✅ تم استلام إيصال الدفع الخاص بك، وسيتم مراجعته وتأكيده من قبل المشرف قريبًا.');
+  
+  } catch(error) {
+      console.error('Error forwarding receipt to admin:', error);
+      ctx.reply('عذراً، حدث خطأ أثناء إرسال الإيصال للمشرف.');
+  } finally {
+      userState.delete(userId); // Clear user state after processing
+  }
+});
+
+// --- Admin Approval Action ---
+bot.action(/approve_(\d+)/, async (ctx) => {
+  if (ctx.from.id.toString() !== ADMIN_ID.toString()) {
+    return ctx.answerCbQuery('خاص بالمشرف فقط.');
+  }
+
+  const userIdToApprove = ctx.match[1];
+  console.log(`Admin ${ctx.from.id} approved payment for user ${userIdToApprove}`);
+
+  try {
+    // Notify the user about the approval
+    await ctx.telegram.sendMessage(userIdToApprove, '🎉 تهانينا! تم تأكيد دفعك بنجاح. أهلاً بك في الدورة.');
+
+    // Update the admin's message to show confirmation
+    await ctx.editMessageCaption('✅ تم تأكيد الدفع بنجاح.');
+
+    ctx.answerCbQuery('تم إرسال التأكيد للمستخدم بنجاح.');
+
+  } catch (error) {
+    console.error('Failed to notify user or edit message:', error);
+    ctx.answerCbQuery('حدث خطأ. ربما قام المستخدم بحظر البوت.');
+  }
+});
+
+
+// --- Text Message Handler (for registration flow, currently inactive) ---
+bot.on(message('text'), (ctx) => {
+  const userId = ctx.from.id;
+  if (userRegistration.has(userId) && !userRegistration.get(userId).country) {
+      const text = ctx.message.text;
+      const userData = userRegistration.get(userId);
+      if (!userData.name) {
+        userData.name = text;
+        ctx.reply('شكرًا لك. الآن الرجاء إدخال رقم هاتفك.');
+      } else if (!userData.phone) {
+        userData.phone = text;
+        ctx.reply('أخيرًا، الرجاء إدخال بلدك.');
+      } else if (!userData.country) {
+        userData.country = text;
+        ctx.reply('اكتمل التسجيل! شكرًا لك.');
+        console.log(`New registration: ${JSON.stringify(userData)}`);
+      }
+  }
+});
+
+// --- Start the Bot & Web Server ---
+bot.launch(() => {
+  console.log('Bot is up and running!');
+});
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot server is running to keep the service alive.');
+});
+
+server.listen(PORT, () => {
+  console.log(`Server is listening on port ${PORT}`);
+});
+
+// --- Graceful Shutdown ---
+process.once('SIGINT', () => { bot.stop('SIGINT'); server.close(); });
+process.once('SIGTERM', () => { bot.stop('SIGTERM'); server.close(); });
